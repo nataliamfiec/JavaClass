@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# Definir variáveis de ambiente para o banco de dados
+export WORDPRESS_DB_HOST="wordpress-database.cjkka6iuko2e.us-east-1.rds.amazonaws.com"
+export WORDPRESS_DB_USER="admin"
+export WORDPRESS_DB_PASSWORD="wordpress0000"
+export WORDPRESS_DB_NAME="Wordpress_Database"
+
+
+# Atualizar o sistema operacional
+sudo yum update -y
+
+# Instalar Docker
+sudo yum install -y docker
+
+# Instalar utilitário EFS (necessário para montar o sistema de arquivos EFS)
+sudo yum install -y amazon-efs-utils
+
+# Adicionar o usuário ao grupo Docker
+sudo usermod -a -G docker ec2-user
+
+# Iniciar e ativar o serviço Docker
+sudo service docker start
+sudo chkconfig docker on
+
+# Instalar Docker Compose
+sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+sudo chmod +x /usr/local/bin/docker-compose
+
+# Criar diretório para montagem EFS
+sudo mkdir -p /mnt/efs
+
+# Montar o EFS (substitua 'fs-xxxxxx' pelo ID do seu sistema de arquivos EFS)
+sudo mount -t efs fs-012cd4ae22b9ab8d1.efs.us-east-1.amazonaws.com:/ /mnt/efs
+
+# Criar arquivo docker-compose.yml
+cat <<EOL > /home/ec2-user/docker-compose.yml
+version: '3.1'
+
+services:
+  wordpress:
+    image: wordpress
+    restart: always
+    ports:
+      - 80:80
+    environment:
+      WORDPRESS_DB_HOST: \$WORDPRESS_DB_HOST
+      WORDPRESS_DB_USER: \$WORDPRESS_DB_USER
+      WORDPRESS_DB_PASSWORD: \$WORDPRESS_DB_PASSWORD
+      WORDPRESS_DB_NAME: \$WORDPRESS_DB_NAME
+    volumes:
+      - /mnt/efs/wordpress:/var/www/html
+
+  mysql:
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_DATABASE: \$WORDPRESS_DB_NAME
+      MYSQL_USER: \$WORDPRESS_DB_USER
+      MYSQL_PASSWORD: \$WORDPRESS_DB_PASSWORD
+    volumes:
+      - /mnt/efs/mysql:/var/lib/mysql
+EOL
+
+# Iniciar os serviços com Docker Compose
+cd /home/ec2-user
+sudo docker-compose up -d
